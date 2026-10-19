@@ -1,0 +1,127 @@
+name: Build whitelist rule-sets
+
+on:
+  schedule:
+    # Every hour. GitHub may delay scheduled runs during busy periods.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Опубликовать релиз, даже если файлы не изменились"
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "README.md"
+      - ".gitignore"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: whitelist-srs
+  cancel-in-progress: false
+
+env:
+  SING_BOX_VERSION: "1.12.12"
+  SING_BOX_SHA256: "7c103cb2f9a7dc54cb82962043596718ed27989a478d6405f0939a9b775f889f"
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Install sing-box
+        run: |
+          set -euo pipefail
+          archive="/tmp/sing-box.tar.gz"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            -o "$archive" \
+            "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-amd64.tar.gz"
+          echo "${SING_BOX_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" -C /tmp
+          sudo install -m 0755 "/tmp/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Build rule-sets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/build.py \
+            --sing-box "$(command -v sing-box)" \
+            --out dist \
+            --work build \
+            --repo "${{ github.repository }}"
+
+      - name: Check whether lists changed
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/previous
+          changed=true
+          if gh release download lists --pattern manifest.json --dir /tmp/previous --clobber 2>/dev/null; then
+            previous="$(jq -r '[.outputs["geosite.srs"].sha256, .outputs["geoip.srs"].sha256] | join(" ")' /tmp/previous/manifest.json)"
+            current="$(jq -r '[.outputs["geosite.srs"].sha256, .outputs["geoip.srs"].sha256] | join(" ")' dist/manifest.json)"
+            echo "Предыдущая сборка: $previous"
+            echo "Текущая сборка:    $current"
+            if [ "$previous" = "$current" ]; then
+              changed=false
+            fi
+          else
+            echo "Предыдущий релиз не найден — публикуем первую сборку."
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        if: steps.publish.outputs.changed == 'true' || github.event.inputs.force == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="/tmp/release-notes.md"
+          cat > "$notes" <<EOF
+          Автоматическая сборка whitelist-списков в формате sing-box.
+
+          - geosite.srs — домены
+          - geoip.srs — подсети
+
+          Стабильные ссылки:
+          - https://github.com/${{ github.repository }}/releases/latest/download/geosite.srs
+          - https://github.com/${{ github.repository }}/releases/latest/download/geoip.srs
+          EOF
+
+          if gh release view lists >/dev/null 2>&1; then
+            gh release edit lists --title "Whitelist rule-sets" --notes-file "$notes"
+          else
+            gh release create lists --title "Whitelist rule-sets" --notes-file "$notes"
+          fi
+
+          gh release upload lists \
+            dist/geosite.srs \
+            dist/geoip.srs \
+            dist/manifest.json \
+            dist/geosite.srs.sha256 \
+            dist/geoip.srs.sha256 \
+            --clobber
+
+          gh release edit lists --latest

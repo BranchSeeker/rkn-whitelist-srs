@@ -1,0 +1,21 @@
+# Build artifacts (generated locally and in CI)
+/build/
+/dist/
+/out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local notes and plans (must never be committed)
+/plans/
+/notes/
+*.local.md
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
