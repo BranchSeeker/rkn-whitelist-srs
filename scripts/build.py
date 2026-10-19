@@ -47,7 +47,7 @@ SRS_VERSION = 3
 MIN_DOMAINS = 50
 MIN_CIDRS = 500
 
-USER_AGENT = "roscomvpn-whitelist-srs/1.0 (+https://github.com/)"
+USER_AGENT = "rkn-whitelist-srs/1.0 (+https://github.com/BranchSeeker/rkn-whitelist-srs)"
 DOMAIN_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 
 
@@ -604,7 +604,7 @@ def build(args: argparse.Namespace) -> int:
         "schema": 1,
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "builder": {
-            "name": "roscomvpn-whitelist-srs",
+            "name": "rkn-whitelist-srs",
             "sing_box": sing_box_version(sing_box),
         },
         "sources": {

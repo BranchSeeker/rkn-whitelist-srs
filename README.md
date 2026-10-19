@@ -10,14 +10,14 @@
 
 ## Готовые ссылки
 
-После первого запуска workflow (и после того, как вы замените `OWNER/REPO` на свой
-GitHub-аккаунт и имя репозитория) ссылки выглядят так:
+Репозиторий: [BranchSeeker/rkn-whitelist-srs](https://github.com/BranchSeeker/rkn-whitelist-srs).
+Ссылки на готовые файлы:
 
 | Файл | Назначение | Постоянная ссылка |
 | --- | --- | --- |
-| `geosite.srs` | домены (domain / domain_suffix / keyword / regex) | `https://github.com/OWNER/REPO/releases/latest/download/geosite.srs` |
-| `geoip.srs` | IPv4/IPv6 подсети (`ip_cidr`) | `https://github.com/OWNER/REPO/releases/latest/download/geoip.srs` |
-| `manifest.json` | происхождение, счётчики и SHA-256 | `https://github.com/OWNER/REPO/releases/latest/download/manifest.json` |
+| `geosite.srs` | домены (domain / domain_suffix / keyword / regex) | `https://github.com/BranchSeeker/rkn-whitelist-srs/releases/latest/download/geosite.srs` |
+| `geoip.srs` | IPv4/IPv6 подсети (`ip_cidr`) | `https://github.com/BranchSeeker/rkn-whitelist-srs/releases/latest/download/geoip.srs` |
+| `manifest.json` | происхождение, счётчики и SHA-256 | `https://github.com/BranchSeeker/rkn-whitelist-srs/releases/latest/download/manifest.json` |
 
 Ссылки не меняются: каждая успешная сборка создаёт новый релиз и помечает его
 latest, поэтому `releases/latest/download/...` всегда указывает на актуальные файлы.
@@ -98,14 +98,14 @@ python scripts/build.py \
   --sing-box /path/to/sing-box \
   --out dist \
   --work build \
-  --repo OWNER/REPO
+  --repo BranchSeeker/rkn-whitelist-srs
 ```
 
 В Windows:
 
 ```powershell
 python -m unittest discover -s tests -v
-python scripts\build.py --sing-box .\sing-box.exe --out dist --work build
+python scripts\build.py --sing-box .\sing-box.exe --out dist --work build --repo BranchSeeker/rkn-whitelist-srs
 ```
 
 Проверить готовый файл вручную:
