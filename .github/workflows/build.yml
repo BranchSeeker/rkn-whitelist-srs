@@ -79,13 +79,15 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/previous
           changed=true
-          if gh release download lists --pattern manifest.json --dir /tmp/previous --clobber 2>/dev/null; then
-            previous="$(jq -r '[.outputs["geosite.srs"].sha256, .outputs["geoip.srs"].sha256] | join(" ")' /tmp/previous/manifest.json)"
-            current="$(jq -r '[.outputs["geosite.srs"].sha256, .outputs["geoip.srs"].sha256] | join(" ")' dist/manifest.json)"
-            echo "Предыдущая сборка: $previous"
-            echo "Текущая сборка:    $current"
-            if [ "$previous" = "$current" ]; then
+          if gh release download --pattern manifest.json --dir /tmp/previous --clobber 2>/dev/null; then
+            previous="$(jq -r '[.outputs["geosite.srs"].sha256 // "", .outputs["geoip.srs"].sha256 // ""] | join(" ")' /tmp/previous/manifest.json 2>/dev/null || true)"
+            current="$(jq -r '[.outputs["geosite.srs"].sha256 // "", .outputs["geoip.srs"].sha256 // ""] | join(" ")' dist/manifest.json 2>/dev/null || true)"
+            echo "Предыдущая сборка: ${previous:-<нет данных>}"
+            echo "Текущая сборка:    ${current:-<нет данных>}"
+            if [ -n "$previous" ] && [ "$previous" = "$current" ]; then
               changed=false
+            else
+              echo "Списки изменились (или предыдущий манифест нечитаем) — публикуем."
             fi
           else
             echo "Предыдущий релиз не найден — публикуем первую сборку."
@@ -98,6 +100,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          tag="lists-$(date -u +%Y%m%d%H%M%S)-${{ github.run_id }}"
           notes="/tmp/release-notes.md"
           cat > "$notes" <<EOF
           Автоматическая сборка whitelist-списков в формате sing-box.
@@ -110,18 +113,40 @@ jobs:
           - https://github.com/${{ github.repository }}/releases/latest/download/geoip.srs
           EOF
 
-          if gh release view lists >/dev/null 2>&1; then
-            gh release edit lists --title "Whitelist rule-sets" --notes-file "$notes"
-          else
-            gh release create lists --title "Whitelist rule-sets" --notes-file "$notes"
-          fi
+          published=false
+          cleanup() {
+            if [ "$published" = false ]; then
+              is_draft="$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+              if [ "$is_draft" = "true" ]; then
+                gh release delete "$tag" --yes --cleanup-tag >/dev/null 2>&1 || true
+              fi
+            fi
+          }
+          trap cleanup EXIT
 
-          gh release upload lists \
-            dist/geosite.srs \
-            dist/geoip.srs \
-            dist/manifest.json \
-            dist/geosite.srs.sha256 \
-            dist/geoip.srs.sha256 \
-            --clobber
+          # Upload into a draft first. The previous "latest" release keeps
+          # serving the stable URLs until the new release is fully uploaded.
+          gh release create "$tag" --draft --title "Whitelist rule-sets" --notes-file "$notes"
 
-          gh release edit lists --latest
+          for attempt in 1 2 3; do
+            if gh release upload "$tag" \
+              dist/geosite.srs \
+              dist/geoip.srs \
+              dist/manifest.json \
+              dist/geosite.srs.sha256 \
+              dist/geoip.srs.sha256 \
+              --clobber; then
+              break
+            fi
+            echo "upload failed (attempt $attempt), retrying..." >&2
+            sleep 5
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+          done
+
+          # Un-draft first: from here on the release must not be deleted again,
+          # even if the "latest" flag cannot be set.
+          gh release edit "$tag" --draft=false
+          published=true
+          gh release edit "$tag" --latest
